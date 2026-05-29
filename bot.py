@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # =====================
-# ENV VARIABLES (Render)
+# ENV (Render / GitHub)
 # =====================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 API_KEY = os.getenv("API_KEY")
@@ -14,7 +14,7 @@ BASE_URL = "https://v3.football.api-sports.io"
 HEADERS = {"x-apisports-key": API_KEY}
 
 # =====================
-# CACHE (anti API spam)
+# CACHE (anti spam API)
 # =====================
 CACHE = {
     "data": None,
@@ -25,11 +25,12 @@ CACHE_TTL = 120  # 2 minute
 
 
 # =====================
-# GET LIVE MATCHES (SAFE)
+# LIVE MATCHES (SAFE API CALL)
 # =====================
 def get_live_matches():
     now = time.time()
 
+    # dacă cache este valid → NU chema API
     if CACHE["data"] and now - CACHE["time"] < CACHE_TTL:
         return CACHE["data"]
 
@@ -48,16 +49,16 @@ def get_live_matches():
 
 
 # =====================
-# AI SIMPLE ANALYSIS
+# AI ANALYSIS ENGINE
 # =====================
-def analyze(home, away):
+def analyze_match(home, away):
     total = home + away
 
     if total == 0:
         verdict = "🧱 Defensive start"
         lines = ["O0.5", "O1.5"]
     elif total == 1:
-        verdict = "⚖️ Slow match"
+        verdict = "⚖️ Slow tempo"
         lines = ["O1.5", "O2.5"]
     elif total == 2:
         verdict = "📊 Balanced game"
@@ -86,7 +87,7 @@ def format_match(m):
 
     minute = m["fixture"]["status"]["elapsed"] or 0
 
-    verdict, lines, gg = analyze(hg, ag)
+    verdict, lines, gg = analyze_match(hg, ag)
 
     return f"""
 ⚽ {home} vs {away}
@@ -94,10 +95,10 @@ def format_match(m):
 
 🔴 SCORE: {hg} - {ag}
 
-📊 AI BET:
+📊 AI BET PRO MAX:
 {verdict}
 
-🎯 Lines:
+🎯 Over Lines:
 {", ".join(lines)}
 
 ⚡ GG:
@@ -106,11 +107,51 @@ def format_match(m):
 
 
 # =====================
+# STATUS DASHBOARD
+# =====================
+def check_api_status():
+    try:
+        r = requests.get(
+            "https://v3.football.api-sports.io/status",
+            headers=HEADERS,
+            timeout=10
+        )
+
+        data = r.json()
+
+        if "error" in data:
+            return "❌ API ERROR"
+
+        return "🟢 API OK"
+
+    except Exception:
+        return "🔴 CONNECTION ERROR"
+
+
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matches = get_live_matches()
+
+    api_status = check_api_status()
+
+    await update.message.reply_text(f"""
+📊 STATUS DASHBOARD
+
+{api_status}
+
+⚽ Live matches: {len(matches)}
+
+📡 Cache TTL: {CACHE_TTL}s
+
+⏱ Time: {time.strftime("%H:%M:%S")}
+""")
+
+
+# =====================
 # COMMANDS
 # =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 AI BET BOT LIVE\n\nComenzi:\n/live - meciuri live"
+        "🤖 AI BET PRO MAX FULL\n\nComenzi:\n/live - meciuri live\n/status - dashboard API"
     )
 
 
@@ -126,19 +167,20 @@ async def live(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =====================
-# MAIN (RENDER READY)
+# MAIN
 # =====================
 def main():
     if not TELEGRAM_TOKEN or not API_KEY:
-        print("Missing ENV variables!")
+        print("Missing ENV variables")
         return
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("live", live))
+    app.add_handler(CommandHandler("status", status))
 
-    print("Bot running on Render...")
+    print("BOT PRO MAX RUNNING...")
     app.run_polling()
 
 
